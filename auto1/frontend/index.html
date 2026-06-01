@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gene Editing Ethics Symposium - Genome Browser</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        .gene-track {
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .gene-track:hover {
+            opacity: 0.8;
+        }
+        .chromosome-band {
+            transition: fill 0.3s ease;
+        }
+        .tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 1000;
+            max-width: 300px;
+        }
+        .discussion-point {
+            animation: fadeIn 0.5s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .severity-critical { border-left: 4px solid #dc2626; }
+        .severity-high { border-left: 4px solid #ea580c; }
+        .severity-medium { border-left: 4px solid #ca8a04; }
+        .severity-low { border-left: 4px solid #16a34a; }
+        .loading-spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div id="app">
+        <nav class="bg-gradient-to-r from-blue-900 to-blue-700 text-white shadow-lg">
+            <div class="max-w-7xl mx-auto px-4 py-4">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                        <i class="fas fa-dna text-3xl"></i>
+                        <div>
+                            <h1 class="text-xl font-bold">Gene Editing Ethics Symposium</h1>
+                            <p class="text-blue-200 text-sm">Interactive Genome Browser & Meeting Minutes</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <button onclick="showMeetings()" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg transition flex items-center space-x-2">
+                            <i class="fas fa-list"></i>
+                            <span>Meetings</span>
+                        </button>
+                        <button onclick="showUpload()" class="bg-green-500 hover:bg-green-600 px-4 py-2 rounded-lg transition flex items-center space-x-2">
+                            <i class="fas fa-upload"></i>
+                            <span>Upload Audio</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <div class="max-w-7xl mx-auto px-4 py-6">
+            <div id="main-content">
+                <div id="upload-view" class="hidden">
+                    <div class="bg-white rounded-xl shadow-lg p-8">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-6">
+                            <i class="fas fa-microphone text-blue-600 mr-3"></i>
+                            Upload Symposium Audio
+                        </h2>
+                        <div class="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center hover:border-blue-500 transition cursor-pointer"
+                             onclick="document.getElementById('audio-file').click()">
+                            <input type="file" id="audio-file" accept="audio/*" class="hidden" onchange="handleFileSelect(event)">
+                            <i class="fas fa-cloud-upload-alt text-6xl text-gray-400 mb-4"></i>
+                            <p class="text-gray-600 mb-2">Click to upload or drag and drop</p>
+                            <p class="text-gray-400 text-sm">Support for WAV, MP3, M4A, and other audio formats</p>
+                        </div>
+                        <div id="file-info" class="mt-6 hidden">
+                            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center space-x-3">
+                                        <i class="fas fa-file-audio text-blue-600 text-2xl"></i>
+                                        <div>
+                                            <p id="file-name" class="font-medium text-gray-800"></p>
+                                            <p id="file-size" class="text-sm text-gray-500"></p>
+                                        </div>
+                                    </div>
+                                    <button onclick="startProcessing()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition">
+                                        <i class="fas fa-play mr-2"></i>
+                                        Start Processing
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="processing-status" class="mt-6 hidden">
+                            <div class="bg-white border border-gray-200 rounded-lg p-6">
+                                <div class="flex items-center space-x-4 mb-4">
+                                    <div class="loading-spinner"></div>
+                                    <div>
+                                        <h3 class="font-semibold text-gray-800">Processing Audio...</h3>
+                                        <p id="current-task" class="text-gray-500 text-sm">Initializing...</p>
+                                    </div>
+                                </div>
+                                <div class="w-full bg-gray-200 rounded-full h-3">
+                                    <div id="progress-bar" class="bg-blue-600 h-3 rounded-full transition-all duration-500" style="width: 0%"></div>
+                                </div>
+                                <p id="progress-text" class="text-sm text-gray-500 mt-2">0% complete</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="meetings-view">
+                    <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+                        <h2 class="text-xl font-bold text-gray-800 mb-4">
+                            <i class="fas fa-history text-blue-600 mr-2"></i>
+                            Recent Meetings
+                        </h2>
+                        <div id="meetings-list" class="space-y-4">
+                            <div class="text-center py-12 text-gray-500">
+                                <i class="fas fa-inbox text-5xl mb-4 text-gray-300"></i>
+                                <p>No meetings processed yet. Upload an audio file to get started.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="summary-view" class="hidden">
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div class="lg:col-span-2 space-y-6">
+                            <div class="bg-white rounded-xl shadow-lg p-6">
+                                <div class="flex items-center justify-between mb-4">
+                                    <h2 id="meeting-title" class="text-xl font-bold text-gray-800">
+                                        <i class="fas fa-flask text-purple-600 mr-2"></i>
+                                        Symposium Summary
+                                    </h2>
+                                    <div class="flex space-x-2">
+                                        <button onclick="downloadMarkdown()" class="text-blue-600 hover:text-blue-800 px-3 py-1 border border-blue-200 rounded hover:bg-blue-50 transition text-sm">
+                                            <i class="fas fa-download mr-1"></i>
+                                            Markdown
+                                        </button>
+                                        <button onclick="shareSummary()" class="text-green-600 hover:text-green-800 px-3 py-1 border border-green-200 rounded hover:bg-green-50 transition text-sm">
+                                            <i class="fas fa-share mr-1"></i>
+                                            Share
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-3 gap-4 mb-6">
+                                    <div class="bg-blue-50 rounded-lg p-4">
+                                        <p class="text-2xl font-bold text-blue-600" id="gene-count">0</p>
+                                        <p class="text-sm text-gray-600">Gene Loci Discussed</p>
+                                    </div>
+                                    <div class="bg-orange-50 rounded-lg p-4">
+                                        <p class="text-2xl font-bold text-orange-600" id="risk-count">0</p>
+                                        <p class="text-sm text-gray-600">Ethical Risks Identified</p>
+                                    </div>
+                                    <div class="bg-green-50 rounded-lg p-4">
+                                        <p class="text-2xl font-bold text-green-600" id="action-count">0</p>
+                                        <p class="text-sm text-gray-600">Action Items</p>
+                                    </div>
+                                </div>
+                                <div id="markdown-content" class="prose max-w-none">
+                                </div>
+                            </div>
+
+                            <div class="bg-white rounded-xl shadow-lg p-6">
+                                <h3 class="text-lg font-bold text-gray-800 mb-4">
+                                    <i class="fas fa-chart-line text-indigo-600 mr-2"></i>
+                                    Technical Feasibility Assessment
+                                </h3>
+                                <div id="technical-feasibility" class="space-y-4">
+                                </div>
+                            </div>
+
+                            <div class="bg-white rounded-xl shadow-lg p-6">
+                                <h3 class="text-lg font-bold text-gray-800 mb-4">
+                                    <i class="fas fa-exclamation-triangle text-red-600 mr-2"></i>
+                                    Ethical Risk Analysis
+                                </h3>
+                                <div id="ethical-risks" class="space-y-4">
+                                </div>
+                            </div>
+
+                            <div class="bg-white rounded-xl shadow-lg p-6">
+                                <h3 class="text-lg font-bold text-gray-800 mb-4">
+                                    <i class="fas fa-users text-teal-600 mr-2"></i>
+                                    Social Impact Analysis
+                                </h3>
+                                <div id="social-impact" class="space-y-4">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="space-y-6">
+                            <div class="bg-white rounded-xl shadow-lg p-6 sticky top-6">
+                                <h3 class="text-lg font-bold text-gray-800 mb-4">
+                                    <i class="fas fa-map text-blue-600 mr-2"></i>
+                                    Genome Browser
+                                </h3>
+                                <div class="mb-4">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Select Chromosome</label>
+                                    <select id="chromosome-select" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500" onchange="updateChromosomeView()">
+                                        <option value="1">Chromosome 1</option>
+                                        <option value="2">Chromosome 2</option>
+                                        <option value="3">Chromosome 3</option>
+                                        <option value="4">Chromosome 4</option>
+                                        <option value="5">Chromosome 5</option>
+                                        <option value="6">Chromosome 6</option>
+                                        <option value="7">Chromosome 7</option>
+                                        <option value="8">Chromosome 8</option>
+                                        <option value="9">Chromosome 9</option>
+                                        <option value="10">Chromosome 10</option>
+                                        <option value="11">Chromosome 11</option>
+                                        <option value="12">Chromosome 12</option>
+                                        <option value="13">Chromosome 13</option>
+                                        <option value="14">Chromosome 14</option>
+                                        <option value="15">Chromosome 15</option>
+                                        <option value="16">Chromosome 16</option>
+                                        <option value="17">Chromosome 17</option>
+                                        <option value="18">Chromosome 18</option>
+                                        <option value="19">Chromosome 19</option>
+                                        <option value="20">Chromosome 20</option>
+                                        <option value="21">Chromosome 21</option>
+                                        <option value="22">Chromosome 22</option>
+                                        <option value="X">Chromosome X</option>
+                                        <option value="Y">Chromosome Y</option>
+                                    </select>
+                                </div>
+                                <div id="genome-browser" class="bg-gray-50 rounded-lg p-4 min-h-[300px]">
+                                    <svg id="chromosome-svg" width="100%" height="200"></svg>
+                                </div>
+                                <div id="gene-details" class="mt-4 hidden">
+                                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                        <h4 id="gene-name" class="font-bold text-blue-800 mb-2"></h4>
+                                        <p id="gene-function" class="text-sm text-gray-600 mb-3"></p>
+                                        <div class="text-xs text-gray-500 mb-2">
+                                            <span id="gene-location"></span>
+                                        </div>
+                                        <h5 class="font-semibold text-gray-700 mb-2">Discussion Points:</h5>
+                                        <ul id="gene-discussion" class="text-sm text-gray-600 space-y-1">
+                                        </ul>
+                                    </div>
+                                </div>
+                                <div id="gene-list" class="mt-4">
+                                    <h4 class="font-semibold text-gray-700 mb-2">Genes Discussed:</h4>
+                                    <div id="genes-container" class="space-y-2">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="bg-white rounded-xl shadow-lg p-6">
+                                <h3 class="text-lg font-bold text-gray-800 mb-4">
+                                    <i class="fas fa-tasks text-yellow-600 mr-2"></i>
+                                    Action Items
+                                </h3>
+                                <div id="action-items" class="space-y-3">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="tooltip" class="tooltip hidden"></div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000/api';
+        let selectedFile = null;
+        let currentMeetingId = null;
+        let currentSummary = null;
+        let geneLoci = [];
+
+        const chromosomeLengths = {
+            '1': 249250621, '2': 243199373, '3': 198022430, '4': 191154276, '5': 180915260,
+            '6': 171115067, '7': 159138663, '8': 146364022, '9': 141213431, '10': 135534747,
+            '11': 135006516, '12': 133851895, '13': 114364328, '14': 107043718, '15': 101991189,
+            '16': 90338345, '17': 83257441, '18': 80373285, '19': 58617616, '20': 64444167,
+            '21': 46709983, '22': 50818468, 'X': 155270560, 'Y': 59373566
+        };
+
+        function showUpload() {
+            document.getElementById('upload-view').classList.remove('hidden');
+            document.getElementById('meetings-view').classList.add('hidden');
+            document.getElementById('summary-view').classList.add('hidden');
+        }
+
+        function showMeetings() {
+            document.getElementById('upload-view').classList.add('hidden');
+            document.getElementById('meetings-view').classList.remove('hidden');
+            document.getElementById('summary-view').classList.add('hidden');
+            loadMeetings();
+        }
+
+        function showSummary(meetingId) {
+            document.getElementById('upload-view').classList.add('hidden');
+            document.getElementById('meetings-view').classList.add('hidden');
+            document.getElementById('summary-view').classList.remove('hidden');
+            currentMeetingId = meetingId;
+            loadSummary(meetingId);
+        }
+
+        async function loadMeetings() {
+            try {
+                const response = await fetch(`${API_BASE}/meetings`);
+                const data = await response.json();
+                renderMeetings(data.meetings);
+            } catch (error) {
+                console.error('Error loading meetings:', error);
+            }
+        }
+
+        function renderMeetings(meetings) {
+            const container = document.getElementById('meetings-list');
+            if (meetings.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-12 text-gray-500">
+                        <i class="fas fa-inbox text-5xl mb-4 text-gray-300"></i>
+                        <p>No meetings processed yet. Upload an audio file to get started.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = meetings.map(meeting => {
+                const statusColors = {
+                    'queued': 'bg-gray-100 text-gray-700',
+                    'processing': 'bg-blue-100 text-blue-700',
+                    'completed': 'bg-green-100 text-green-700',
+                    'failed': 'bg-red-100 text-red-700'
+                };
+                const statusIcons = {
+                    'queued': 'fa-clock',
+                    'processing': 'fa-spinner fa-spin',
+                    'completed': 'fa-check-circle',
+                    'failed': 'fa-times-circle'
+                };
+
+                return `
+                    <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition cursor-pointer" onclick="showSummary('${meeting.meeting_id}')">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-4">
+                                <div class="bg-blue-100 rounded-full p-3">
+                                    <i class="fas fa-microphone text-blue-600 text-xl"></i>
+                                </div>
+                                <div>
+                                    <h3 class="font-semibold text-gray-800">${meeting.title}</h3>
+                                    <p class="text-sm text-gray-500">
+                                        <i class="far fa-calendar mr-1"></i>
+                                        ${meeting.date}
+                                        <span class="mx-2">•</span>
+                                        <i class="far fa-clock mr-1"></i>
+                                        ${new Date(meeting.created_at).toLocaleTimeString()}
+                                    </p>
+                                    <p class="text-xs text-gray-400 mt-1">ID: ${meeting.meeting_id}</p>
+                                </div>
+                            </div>
+                            <div class="flex items-center space-x-4">
+                                <div class="text-right">
+                                    <div class="w-32 bg-gray-200 rounded-full h-2 mb-1">
+                                        <div class="bg-blue-600 h-2 rounded-full transition-all" style="width: ${meeting.progress * 100}%"></div>
+                                    </div>
+                                    <p class="text-xs text-gray-500">${Math.round(meeting.progress * 100)}% complete</p>
+                                </div>
+                                <span class="px-3 py-1 rounded-full text-xs font-medium ${statusColors[meeting.status] || 'bg-gray-100'}">
+                                    <i class="fas ${statusIcons[meeting.status] || 'fa-circle'} mr-1"></i>
+                                    ${meeting.status.charAt(0).toUpperCase() + meeting.status.slice(1)}
+                                </span>
+                                <i class="fas fa-chevron-right text-gray-400"></i>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function handleFileSelect(event) {
+            selectedFile = event.target.files[0];
+            if (selectedFile) {
+                document.getElementById('file-info').classList.remove('hidden');
+                document.getElementById('file-name').textContent = selectedFile.name;
+                document.getElementById('file-size').textContent = formatFileSize(selectedFile.size);
+            }
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / 1048576).toFixed(1) + ' MB';
+        }
+
+        async function startProcessing() {
+            if (!selectedFile) return;
+
+            document.getElementById('processing-status').classList.remove('hidden');
+            
+            const formData = new FormData();
+            formData.append('audio_file', selectedFile);
+            formData.append('meeting_title', 'Gene Editing Ethics Symposium');
+
+            try {
+                const response = await fetch(`${API_BASE}/meetings/upload`, {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                
+                currentMeetingId = data.meeting_id;
+                pollProcessingStatus(data.meeting_id);
+            } catch (error) {
+                console.error('Error uploading file:', error);
+                document.getElementById('current-task').textContent = 'Error: ' + error.message;
+            }
+        }
+
+        async function pollProcessingStatus(meetingId) {
+            const pollInterval = setInterval(async () => {
+                try {
+                    const response = await fetch(`${API_BASE}/meetings/${meetingId}/status`);
+                    const status = await response.json();
+                    
+                    document.getElementById('current-task').textContent = status.current_task || 'Processing...';
+                    document.getElementById('progress-bar').style.width = `${status.progress * 100}%`;
+                    document.getElementById('progress-text').textContent = `${Math.round(status.progress * 100)}% complete`;
+
+                    if (status.status === 'completed') {
+                        clearInterval(pollInterval);
+                        setTimeout(() => {
+                            showSummary(meetingId);
+                            showToast('Processing complete!', 'success');
+                        }, 1000);
+                    } else if (status.status === 'failed') {
+                        clearInterval(pollInterval);
+                        document.getElementById('current-task').textContent = 'Failed: ' + status.error_message;
+                        showToast('Processing failed', 'error');
+                    }
+                } catch (error) {
+                    console.error('Error polling status:', error);
+                }
+            }, 2000);
+        }
+
+        async function loadSummary(meetingId) {
+            try {
+                const response = await fetch(`${API_BASE}/meetings/${meetingId}/summary`);
+                currentSummary = await response.json();
+                renderSummary(currentSummary);
+                
+                const geneLociResponse = await fetch(`${API_BASE}/meetings/${meetingId}/gene-loci`);
+                geneLoci = await geneLociResponse.json();
+                renderGeneLoci(geneLoci);
+                renderGenomeBrowser();
+            } catch (error) {
+                console.error('Error loading summary:', error);
+            }
+        }
+
+        function renderSummary(summary) {
+            document.getElementById('meeting-title').innerHTML = `
+                <i class="fas fa-flask text-purple-600 mr-2"></i>
+                ${summary.title}
+            `;
+            document.getElementById('gene-count').textContent = summary.gene_loci.length;
+            document.getElementById('risk-count').textContent = summary.ethical_risks.length;
+            document.getElementById('action-count').textContent = summary.action_items.length;
+
+            const markedContent = marked.parse(summary.full_markdown || summary.raw_transcript || '');
+            document.getElementById('markdown-content').innerHTML = markedContent;
+
+            renderTechnicalFeasibility(summary.technical_feasibility);
+            renderEthicalRisks(summary.ethical_risks);
+            renderSocialImpact(summary.social_impact);
+            renderActionItems(summary.action_items);
+        }
+
+        function renderTechnicalFeasibility(feasibility) {
+            const container = document.getElementById('technical-feasibility');
+            container.innerHTML = `
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="bg-green-50 rounded-lg p-4">
+                        <h4 class="font-semibold text-green-800 mb-2">Current Capabilities</h4>
+                        <ul class="text-sm text-gray-700 space-y-1">
+                            ${feasibility.current_capabilities.map(cap => `<li><i class="fas fa-check text-green-500 mr-2"></i>${cap}</li>`).join('')}
+                        </ul>
+                    </div>
+                    <div class="bg-orange-50 rounded-lg p-4">
+                        <h4 class="font-semibold text-orange-800 mb-2">Limitations</h4>
+                        <ul class="text-sm text-gray-700 space-y-1">
+                            ${feasibility.limitations.map(lim => `<li><i class="fas fa-exclamation text-orange-500 mr-2"></i>${lim}</li>`).join('')}
+                        </ul>
+                    </div>
+                </div>
+                <div class="mt-4 p-4 bg-gray-50 rounded-lg">
+                    <div class="flex justify-between items-center mb-2">
+                        <h4 class="font-semibold text-gray-700">Timeline Assessment</h4>
+                        <span class="text-sm text-blue-600 font-medium">${feasibility.success_probability}</span>
+                    </div>
+                    <p class="text-sm text-gray-600">${feasibility.timeline_assessment}</p>
+                </div>
+            `;
+        }
+
+        function renderEthicalRisks(risks) {
+            const container = document.getElementById('ethical-risks');
+            container.innerHTML = risks.map(risk => {
+                const severityClass = `severity-${risk.severity.toLowerCase()}`;
+                const severityBg = {
+                    'Critical': 'bg-red-50',
+                    'High': 'bg-orange-50',
+                    'Medium': 'bg-yellow-50',
+                    'Low': 'bg-green-50'
+                }[risk.severity] || 'bg-gray-50';
+
+                return `
+                    <div class="${severityBg} rounded-lg p-4 ${severityClass}">
+                        <div class="flex items-start justify-between mb-2">
+                            <h4 class="font-semibold text-gray-800">${risk.category}</h4>
+                            <span class="px-2 py-1 rounded text-xs font-medium ${
+                                risk.severity === 'Critical' ? 'bg-red-200 text-red-800' :
+                                risk.severity === 'High' ? 'bg-orange-200 text-orange-800' :
+                                risk.severity === 'Medium' ? 'bg-yellow-200 text-yellow-800' :
+                                'bg-green-200 text-green-800'
+                            }">
+                                ${risk.severity}
+                            </span>
+                        </div>
+                        <p class="text-sm text-gray-600 mb-3">${risk.description}</p>
+                        <div class="grid grid-cols-2 gap-4 text-xs">
+                            <div>
+                                <h5 class="font-medium text-gray-700 mb-1">Mitigation Strategies:</h5>
+                                <ul class="text-gray-600 space-y-1">
+                                    ${risk.mitigation_strategies.map(s => `<li>• ${s}</li>`).join('')}
+                                </ul>
+                            </div>
+                            <div>
+                                <h5 class="font-medium text-gray-700 mb-1">Stakeholders Affected:</h5>
+                                <ul class="text-gray-600 space-y-1">
+                                    ${risk.stakeholders_affected.map(s => `<li>• ${s}</li>`).join('')}
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderSocialImpact(impact) {
+            const container = document.getElementById('social-impact');
+            container.innerHTML = `
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="bg-blue-50 rounded-lg p-4">
+                        <h4 class="font-semibold text-blue-800 mb-2">
+                            <i class="fas fa-clock text-blue-600 mr-2"></i>
+                            Short-Term (0-5 years)
+                        </h4>
+                        <ul class="text-sm text-gray-700 space-y-1">
+                            ${impact.short_term.map(item => `<li>• ${item}</li>`).join('')}
+                        </ul>
+                    </div>
+                    <div class="bg-purple-50 rounded-lg p-4">
+                        <h4 class="font-semibold text-purple-800 mb-2">
+                            <i class="fas fa-globe text-purple-600 mr-2"></i>
+                            Long-Term (20+ years)
+                        </h4>
+                        <ul class="text-sm text-gray-700 space-y-1">
+                            ${impact.long_term.map(item => `<li>• ${item}</li>`).join('')}
+                        </ul>
+                    </div>
+                </div>
+                <div class="mt-4 bg-teal-50 rounded-lg p-4">
+                    <h4 class="font-semibold text-teal-800 mb-2">
+                        <i class="fas fa-balance-scale text-teal-600 mr-2"></i>
+                        Equity Considerations
+                    </h4>
+                    <ul class="text-sm text-gray-700 space-y-1">
+                        ${impact.equity_considerations.map(item => `<li>• ${item}</li>`).join('')}
+                    </ul>
+                </div>
+                <div class="mt-4 bg-gray-50 rounded-lg p-4">
+                    <h4 class="font-semibold text-gray-700 mb-2">
+                        <i class="fas fa-comments text-gray-600 mr-2"></i>
+                        Public Perception
+                    </h4>
+                    <p class="text-sm text-gray-600">${impact.public_perception}</p>
+                </div>
+            `;
+        }
+
+        function renderActionItems(items) {
+            const container = document.getElementById('action-items');
+            container.innerHTML = items.map((item, index) => `
+                <div class="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
+                    <div class="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-sm font-bold">
+                        ${index + 1}
+                    </div>
+                    <div class="flex-1">
+                        <p class="text-sm font-medium text-gray-800">${item.task}</p>
+                        <div class="flex items-center space-x-4 mt-1 text-xs text-gray-500">
+                            <span><i class="fas fa-user mr-1"></i>${item.assignee}</span>
+                            <span><i class="fas fa-calendar mr-1"></i>${item.deadline}</span>
+                            <span class="px-2 py-0.5 rounded ${
+                                item.priority === 'High' ? 'bg-red-100 text-red-700' :
+                                item.priority === 'Medium' ? 'bg-yellow-100 text-yellow-700' :
+                                'bg-green-100 text-green-700'
+                            }">${item.priority}</span>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderGeneLoci(loci) {
+            const container = document.getElementById('genes-container');
+            container.innerHTML = loci.map((gene, index) => `
+                <div class="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer transition"
+                     onclick="selectGene(${index})">
+                    <div class="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-xs font-bold">
+                        ${gene.gene_name.charAt(0)}
+                    </div>
+                    <div class="flex-1">
+                        <p class="font-medium text-gray-800 text-sm">${gene.gene_name}</p>
+                        <p class="text-xs text-gray-500">Chr ${gene.chromosome}</p>
+                    </div>
+                    <i class="fas fa-chevron-right text-gray-400 text-xs"></i>
+                </div>
+            `).join('');
+        }
+
+        function renderGenomeBrowser() {
+            const svg = d3.select('#chromosome-svg');
+            svg.selectAll('*').remove();
+
+            const selectedChromosome = document.getElementById('chromosome-select').value;
+            const width = svg.node().clientWidth || 400;
+            const height = 200;
+            const padding = 40;
+
+            const chromosomeGenes = geneLoci.filter(g => g.chromosome === selectedChromosome);
+            
+            const xScale = d3.scaleLinear()
+                .domain([0, chromosomeLengths[selectedChromosome]])
+                .range([padding, width - padding]);
+
+            const bands = generateChromosomeBands(selectedChromosome, chromosomeLengths[selectedChromosome]);
+            
+            const chromosomeGroup = svg.append('g')
+                .attr('transform', `translate(0, ${height / 2})`);
+
+            chromosomeGroup.append('rect')
+                .attr('x', padding)
+                .attr('y', -15)
+                .attr('width', width - 2 * padding)
+                .attr('height', 30)
+                .attr('rx', 15)
+                .attr('fill', '#e5e7eb');
+
+            bands.forEach(band => {
+                chromosomeGroup.append('rect')
+                    .attr('x', xScale(band.start))
+                    .attr('y', -15)
+                    .attr('width', xScale(band.end) - xScale(band.start))
+                    .attr('height', 30)
+                    .attr('fill', band.stain === 'gpos' ? '#9ca3af' : 'transparent')
+                    .attr('opacity', 0.5)
+                    .attr('class', 'chromosome-band');
+            });
+
+            const centromerePos = chromosomeLengths[selectedChromosome] * 0.4;
+            chromosomeGroup.append('ellipse')
+                .attr('cx', xScale(centromerePos))
+                .attr('cy', 0)
+                .attr('rx', 8)
+                .attr('ry', 18)
+                .attr('fill', '#6b7280');
+
+            chromosomeGenes.forEach((gene, i) => {
+                const position = parseGenePosition(gene.position) || (chromosomeLengths[selectedChromosome] * (0.2 + i * 0.2));
+                const yOffset = (i % 2 === 0 ? -40 : 40);
+
+                const geneGroup = chromosomeGroup.append('g')
+                    .attr('class', 'gene-track')
+                    .attr('data-gene-index', geneLoci.indexOf(gene));
+
+                geneGroup.append('line')
+                    .attr('x1', xScale(position))
+                    .attr('y1', 0)
+                    .attr('x2', xScale(position))
+                    .attr('y2', yOffset)
+                    .attr('stroke', '#6366f1')
+                    .attr('stroke-width', 2);
+
+                geneGroup.append('circle')
+                    .attr('cx', xScale(position))
+                    .attr('cy', 0)
+                    .attr('r', 6)
+                    .attr('fill', '#6366f1')
+                    .attr('stroke', 'white')
+                    .attr('stroke-width', 2);
+
+                geneGroup.append('rect')
+                    .attr('x', xScale(position) - 30)
+                    .attr('y', yOffset - 12)
+                    .attr('width', 60)
+                    .attr('height', 24)
+                    .attr('rx', 4)
+                    .attr('fill', '#6366f1');
+
+                geneGroup.append('text')
+                    .attr('x', xScale(position))
+                    .attr('y', yOffset + 4)
+                    .attr('text-anchor', 'middle')
+                    .attr('fill', 'white')
+                    .attr('font-size', '10px')
+                    .attr('font-weight', 'bold')
+                    .text(gene.gene_name);
+
+                geneGroup.on('mouseover', (event) => showGeneTooltip(event, gene))
+                        .on('mouseout', hideGeneTooltip)
+                        .on('click', () => selectGene(geneLoci.indexOf(gene)));
+            });
+
+            const xAxis = d3.axisBottom(xScale)
+                .ticks(5)
+                .tickFormat(d => (d / 1e6).toFixed(0) + ' Mb');
+
+            svg.append('g')
+                .attr('transform', `translate(0, ${height - 20})`)
+                .call(xAxis)
+                .selectAll('text')
+                .attr('font-size', '10px')
+                .attr('fill', '#6b7280');
+
+            chromosomeGroup.append('text')
+                .attr('x', width / 2)
+                .attr('y', -30)
+                .attr('text-anchor', 'middle')
+                .attr('font-size', '14px')
+                .attr('font-weight', 'bold')
+                .attr('fill', '#374151')
+                .text(`Chromosome ${selectedChromosome}`);
+        }
+
+        function generateChromosomeBands(chromosome, length) {
+            const bands = [];
+            const numBands = 10;
+            const bandLength = length / numBands;
+            
+            for (let i = 0; i < numBands; i++) {
+                bands.push({
+                    start: i * bandLength,
+                    end: (i + 1) * bandLength,
+                    stain: i % 2 === 0 ? 'gpos' : 'gneg'
+                });
+            }
+            return bands;
+        }
+
+        function parseGenePosition(positionStr) {
+            if (!positionStr) return null;
+            const match = positionStr.match(/([\d,]+)/);
+            if (match) {
+                return parseInt(match[1].replace(/,/g, ''));
+            }
+            return null;
+        }
+
+        function showGeneTooltip(event, gene) {
+            const tooltip = document.getElementById('tooltip');
+            tooltip.innerHTML = `
+                <div class="font-bold text-blue-400 mb-1">${gene.gene_name}</div>
+                <div class="text-gray-300 text-xs mb-2">${gene.function}</div>
+                <div class="text-xs">
+                    <div class="text-gray-400 mb-1">Discussion Points:</div>
+                    ${gene.discussion_points.map(p => `<div class="text-white">• ${p}</div>`).join('')}
+                </div>
+            `;
+            tooltip.classList.remove('hidden');
+            tooltip.style.left = (event.pageX + 15) + 'px';
+            tooltip.style.top = (event.pageY + 15) + 'px';
+        }
+
+        function hideGeneTooltip() {
+            document.getElementById('tooltip').classList.add('hidden');
+        }
+
+        function selectGene(index) {
+            const gene = geneLoci[index];
+            if (!gene) return;
+
+            document.getElementById('gene-details').classList.remove('hidden');
+            document.getElementById('gene-name').textContent = gene.gene_name;
+            document.getElementById('gene-function').textContent = gene.function;
+            document.getElementById('gene-location').textContent = `Chromosome ${gene.chromosome}: ${gene.position || 'Position not specified'}`;
+            document.getElementById('gene-discussion').innerHTML = gene.discussion_points.map(p => 
+                `<li class="discussion-point">• ${p}</li>`
+            ).join('');
+
+            document.getElementById('chromosome-select').value = gene.chromosome;
+            updateChromosomeView();
+        }
+
+        function updateChromosomeView() {
+            renderGenomeBrowser();
+        }
+
+        async function downloadMarkdown() {
+            if (!currentMeetingId) return;
+            
+            try {
+                const response = await fetch(`${API_BASE}/meetings/${currentMeetingId}/summary/markdown`);
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${currentMeetingId}_summary.md`;
+                a.click();
+                window.URL.revokeObjectURL(url);
+            } catch (error) {
+                console.error('Error downloading markdown:', error);
+                showToast('Failed to download', 'error');
+            }
+        }
+
+        function shareSummary() {
+            if (!currentMeetingId) return;
+            
+            const url = `${window.location.origin}?meeting=${currentMeetingId}`;
+            navigator.clipboard.writeText(url).then(() => {
+                showToast('Link copied to clipboard!', 'success');
+            }).catch(() => {
+                showToast('Failed to copy link', 'error');
+            });
+        }
+
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `fixed bottom-4 right-4 px-6 py-3 rounded-lg shadow-lg text-white z-50 transition-all transform translate-y-0 ${
+                type === 'success' ? 'bg-green-500' :
+                type === 'error' ? 'bg-red-500' :
+                'bg-blue-500'
+            }`;
+            toast.innerHTML = `
+                <div class="flex items-center space-x-2">
+                    <i class="fas ${type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle'}"></i>
+                    <span>${message}</span>
+                </div>
+            `;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-4');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const meetingId = urlParams.get('meeting');
+            
+            if (meetingId) {
+                showSummary(meetingId);
+            } else {
+                showMeetings();
+            }
+        });
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</body>
+</html>

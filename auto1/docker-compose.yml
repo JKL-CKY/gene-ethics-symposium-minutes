@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4-turbo-preview}
+      - PYANNOTE_AUTH_TOKEN=${PYANNOTE_AUTH_TOKEN}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - ETHICS_COMMITTEE_EMAIL=${ETHICS_COMMITTEE_EMAIL}
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///./ethics_minutes.db}
+      - ARCHIVE_DIR=/app/archive
+      - AUDIO_UPLOAD_DIR=/app/uploads
+      - OUTPUT_DIR=/app/output
+    volumes:
+      - ./uploads:/app/uploads
+      - ./output:/app/output
+      - ./archive:/app/archive
+    restart: unless-stopped
+
+  frontend:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  luigi-scheduler:
+    build: .
+    command: luigid
+    ports:
+      - "8082:8082"
+    environment:
+      - LUIGI_CONFIG_PATH=/app/luigi.cfg
+    volumes:
+      - ./uploads:/app/uploads
+      - ./output:/app/output
+      - ./archive:/app/archive
+    restart: unless-stopped
